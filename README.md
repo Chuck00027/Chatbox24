@@ -4,9 +4,14 @@ Load the conversation history of the email. Generate automatic answers based on 
 The basic RAG answer generation function is implemented, but the function of processing loaded emails still needs to be optimized. loadfile.py reads the relevant regulations and stores the content in Knowlege Base.txt. gmailload.py can read the selected email. raganswer-static.py can read the questions in questions.txt and generate answers. raganswer-dynamic.py is used for continuous questioning, and the actual work on the server when used simulates real continuous communication and answering
 
 Preliminary preparation：
-1.Please download Ollama: https://ollama.com/download
+
+1.Please download Ollama: 
+
+https://ollama.com/download
 Then  run the command to install the models:
+
 ollama pull llama3
+
 ollama pull mxbai-embed-large
 
 2.Set up a Gmail password：
@@ -15,6 +20,7 @@ Enable IMAP of Gmial
 Then full your Email and password in env file
 
 Then Setup：
+
 1.cd dir
 
 2.pip install -r requirements.txt
