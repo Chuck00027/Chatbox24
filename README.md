@@ -29,7 +29,10 @@ Then Setup：
 
 You could select the requirement documents to load into the Knowledge Base
 
-4.run gmailload.py
+4.1load_eml.py
+Currently we cannot process emails in batches.I have to wait for the reply from TUM IT support.So use this for alternative.Please skip 4.2
+
+4.2run gmailload.py
 
 You could load emails with specified labels, specified keywords, and specified time ranges.
 
@@ -39,14 +42,18 @@ python gmailload.py --label "your_label"
 
 In that way the Email conversation is loaded. The normalized text in stored in Knowledge Base.txt(Enhanced knowledge base,improve abaility) and Standard Q&A.txt(generalize the email conversation into Q&A form,use it as sample solution,could be used to test the accuracy of the RAG answer).BUT this function needs to be improved，to avoid noise information.
 
-5.python raganswer-static.py
+5.Q_A_Processing.py
+
+Aim to Enhancing information filtering capabilities. Avoid unnecessary information or personal information leak
+
+6.python raganswer-static.py
 
 We should first edit the questions in question.txt.In that way the answer is generated and stored in answers.txt with Q&A form
 
-6.To be implemented, use the newly obtained questions and old KB to test the accuracy of the answers
+7.To be implemented, use the newly obtained questions and old KB to test the accuracy of the answers
 
-7.python raganswer-dynamic.py
+8.python raganswer-dynamic.py
 
-In order to run on the server in the future. In multiple rounds of communication, combine the previous information to give further answers. Run this program, you can manually enter questions, and it will eliminate more accurate answers based on your multiple rounds of questions.
+In order to run on the server in the future. In multiple rounds of communication, combine the previous information to give further answers. Run this program, you can manually enter questions, and it will eliminate more accurate answers based on your multiple rounds of questions.We use SCS method,Efficiently extract relevant information to reduce noise and optimize the answer quality of the language model.
 
 The next step will be to improve the current deficiencies and further integrate the program into the GUI interface
