@@ -1,9 +1,10 @@
 import torch
 import ollama
 import os
-from openai import OpenAI
-import argparse
+import hashlib
 import json
+import argparse
+from openai import OpenAI
 
 # ANSI escape codes for colors
 PINK = '\033[95m'
@@ -12,47 +13,77 @@ YELLOW = '\033[93m'
 NEON_GREEN = '\033[92m'
 RESET_COLOR = '\033[0m'
 
-# Function to open a file and return its contents as a string
-def open_file(filepath):
-    with open(filepath, 'r', encoding='utf-8') as infile:
-        return infile.read()
+# Function to compute file hash
+def compute_file_hash(filepath):
+    with open(filepath, 'rb') as f:
+        return hashlib.md5(f.read()).hexdigest()
 
-# Function to get relevant context from the vault based on user input
-def get_relevant_context(rewritten_input, vault_embeddings, vault_content, top_k=3):
-    if vault_embeddings.nelement() == 0:  # Check if the tensor has any elements
+# Function to load or generate embeddings
+def load_or_generate_embeddings(vault_filepath, embedding_model='mxbai-embed-large'):
+    embeddings_cache_file = 'embeddings_cache.json'
+    cache_info_file = 'cache_info.json'
+    
+    if not os.path.exists(vault_filepath):
+        raise FileNotFoundError(f"{vault_filepath} does not exist.")
+    
+    current_hash = compute_file_hash(vault_filepath)
+    
+    if os.path.exists(cache_info_file):
+        with open(cache_info_file, 'r') as f:
+            cache_info = json.load(f)
+        if cache_info.get('file_hash') == current_hash:
+            print("Knowledge base unchanged. Loading cached embeddings...")
+            with open(embeddings_cache_file, 'r') as f:
+                return torch.tensor(json.load(f))
+    
+    print("Knowledge base changed or no cache found. Generating embeddings...")
+    with open(vault_filepath, 'r', encoding='utf-8') as vault_file:
+        vault_content = vault_file.readlines()
+    
+    embeddings = []
+    for content in vault_content:
+        try:
+            response = ollama.embeddings(model=embedding_model, prompt=content.strip())
+            embeddings.append(response["embedding"])
+        except Exception as e:
+            print(f"Failed to generate embedding for content: {content.strip()}\nError: {e}")
+    
+    with open(embeddings_cache_file, 'w') as f:
+        json.dump(embeddings, f)
+    with open(cache_info_file, 'w') as f:
+        json.dump({'file_hash': current_hash}, f)
+    
+    return torch.tensor(embeddings)
+
+# Sparse Context Selection
+def sparse_context_selection(rewritten_input, vault_embeddings, vault_content, min_k=1, max_k=5, threshold=0.8):
+    if vault_embeddings.nelement() == 0:
         return []
-    # Encode the rewritten input
-    input_embedding = ollama.embeddings(model='mxbai-embed-large', prompt=rewritten_input)["embedding"]
-    # Compute cosine similarity between the input and vault embeddings
-    cos_scores = torch.cosine_similarity(torch.tensor(input_embedding).unsqueeze(0), vault_embeddings)
-    # Adjust top_k if it's greater than the number of available scores
-    top_k = min(top_k, len(cos_scores))
-    # Sort the scores and get the top-k indices
-    top_indices = torch.topk(cos_scores, k=top_k)[1].tolist()
-    # Get the corresponding context from the vault
-    relevant_context = [vault_content[idx].strip() for idx in top_indices]
-    return relevant_context
 
-def rewrite_query(user_input_json, conversation_history, ollama_model):
+    input_embedding = ollama.embeddings(model='mxbai-embed-large', prompt=rewritten_input)["embedding"]
+    cos_scores = torch.cosine_similarity(torch.tensor(input_embedding).unsqueeze(0), vault_embeddings)
+    
+    valid_indices = torch.where(cos_scores >= threshold)[0].tolist()
+    if len(valid_indices) < min_k:
+        top_indices = torch.topk(cos_scores, k=min_k)[1].tolist()
+    else:
+        sorted_valid_indices = sorted(valid_indices, key=lambda i: cos_scores[i], reverse=True)
+        top_indices = sorted_valid_indices[:max_k]
+
+    selected_contexts = [vault_content[idx].strip() for idx in top_indices]
+    print(f"Selected {len(selected_contexts)} contexts using SCS.")
+    return selected_contexts
+
+# Rewrite query
+def rewrite_query(user_input_json, conversation_history, ollama_model, client):
     user_input = json.loads(user_input_json)["Query"]
     context = "\n".join([f"{msg['role']}: {msg['content']}" for msg in conversation_history[-2:]])
     prompt = f"""Rewrite the following query by incorporating relevant context from the conversation history.
-    The rewritten query should:
-    
-    - Preserve the core intent and meaning of the original query
-    - Expand and clarify the query to make it more specific and informative for retrieving relevant context
-    - Avoid introducing new topics or queries that deviate from the original query
-    - DONT EVER ANSWER the Original query, but instead focus on rephrasing and expanding it into a new query
-    
-    Return ONLY the rewritten query text, without any additional formatting or explanations.
-    
-    Conversation History:
-    {context}
-    
+    Return ONLY the rewritten query text.
+    Conversation History: {context}
     Original query: [{user_input}]
+    Rewritten query: """
     
-    Rewritten query: 
-    """
     response = client.chat.completions.create(
         model=ollama_model,
         messages=[{"role": "system", "content": prompt}],
@@ -60,113 +91,59 @@ def rewrite_query(user_input_json, conversation_history, ollama_model):
         n=1,
         temperature=0.1,
     )
-    rewritten_query = response.choices[0].message.content.strip()
-    return json.dumps({"Rewritten Query": rewritten_query})
-   
-def ollama_chat(user_input, system_message, vault_embeddings, vault_content, ollama_model, conversation_history):
+    return response.choices[0].message.content.strip()
+
+# Main chat function
+def ollama_chat(user_input, system_message, vault_embeddings, vault_content, ollama_model, conversation_history, client):
     conversation_history.append({"role": "user", "content": user_input})
-    
-    if len(conversation_history) > 1:
-        query_json = {
-            "Query": user_input,
-            "Rewritten Query": ""
-        }
-        rewritten_query_json = rewrite_query(json.dumps(query_json), conversation_history, ollama_model)
-        rewritten_query_data = json.loads(rewritten_query_json)
-        rewritten_query = rewritten_query_data["Rewritten Query"]
-        print(PINK + "Original Query: " + user_input + RESET_COLOR)
-        print(PINK + "Rewritten Query: " + rewritten_query + RESET_COLOR)
-    else:
-        rewritten_query = user_input
-    
-    relevant_context = get_relevant_context(rewritten_query, vault_embeddings, vault_content)
+    rewritten_query = user_input
+
+    relevant_context = sparse_context_selection(rewritten_query, vault_embeddings, vault_content)
     if relevant_context:
         context_str = "\n".join(relevant_context)
-        print("Context Pulled from Documents: \n\n" + CYAN + context_str + RESET_COLOR)
+        print("Context Pulled from Documents:\n" + CYAN + context_str + RESET_COLOR)
     else:
         print(CYAN + "No relevant context found." + RESET_COLOR)
     
-    user_input_with_context = user_input
-    if relevant_context:
-        user_input_with_context = user_input + "\n\nRelevant Context:\n" + context_str
-    
+    user_input_with_context = f"{user_input}\n\nRelevant Context:\n{context_str}" if relevant_context else user_input
     conversation_history[-1]["content"] = user_input_with_context
-    
-    messages = [
-        {"role": "system", "content": system_message},
-        *conversation_history
-    ]
-    
+
+    messages = [{"role": "system", "content": system_message}, *conversation_history]
     response = client.chat.completions.create(
         model=ollama_model,
         messages=messages,
         max_tokens=2000,
     )
-    
-    conversation_history.append({"role": "assistant", "content": response.choices[0].message.content})
-    
     return response.choices[0].message.content
 
-# Parse command-line arguments
-print(NEON_GREEN + "Parsing command-line arguments..." + RESET_COLOR)
+# Parse arguments and initialize client
 parser = argparse.ArgumentParser(description="Ollama Chat")
-parser.add_argument("--model", default="llama3", help="Ollama model to use (default: llama3)")
+parser.add_argument("--model", default="llama3", help="Ollama model to use")
 args = parser.parse_args()
 
-# Configuration for the Ollama API client
 print(NEON_GREEN + "Initializing Ollama API client..." + RESET_COLOR)
 client = OpenAI(
     base_url='http://localhost:11434/v1',
     api_key='llama3'
 )
 
-# Load the vault content
-print(NEON_GREEN + "Loading vault content..." + RESET_COLOR)
-vault_content = []
-if os.path.exists("Knowledge Base.txt"):
-    with open("Knowledge Base.txt", "r", encoding='utf-8') as vault_file:
-        vault_content = vault_file.readlines()
+# Load knowledge base and questions
+vault_filepath = "Knowledge Base.txt"
+vault_embeddings_tensor = load_or_generate_embeddings(vault_filepath)
+with open(vault_filepath, 'r', encoding='utf-8') as f:
+    vault_content = f.readlines()
 
-# Generate embeddings for the vault content using Ollama
-print(NEON_GREEN + "Generating embeddings for the vault content..." + RESET_COLOR)
-vault_embeddings = []
-for content in vault_content:
-    try:
-        response = ollama.embeddings(model='mxbai-embed-large', prompt=content)
-        vault_embeddings.append(response["embedding"])
-    except Exception as e:
-        print(f"Failed to generate embedding for content: {content}\nError: {e}")
-
-
-# Convert to tensor and print embeddings
-print("Converting embeddings to tensor...")
-vault_embeddings_tensor = torch.tensor(vault_embeddings) 
-print("Embeddings for each line in the vault:")
-print(vault_embeddings_tensor)
-
-# Load questions from question.txt
 question_file = "question.txt"
-questions = []
 if os.path.exists(question_file):
-    with open(question_file, "r", encoding="utf-8") as q_file:
+    with open(question_file, 'r', encoding='utf-8') as q_file:
         questions = [line.strip() for line in q_file if line.strip()]
-
-# Process questions if they exist
-if questions:
-    print(NEON_GREEN + f"Found {len(questions)} questions in {question_file}. Processing each..." + RESET_COLOR)
     answers = []
     for question in questions:
-        print(YELLOW + f"Processing question: {question}" + RESET_COLOR)
-        response = ollama_chat(question, "You are a helpful assistant.", vault_embeddings_tensor, vault_content, args.model, [])
-        print(NEON_GREEN + "Response: \n\n" + response + RESET_COLOR)
+        response = ollama_chat(question, "You are a helpful assistant.", vault_embeddings_tensor, vault_content, args.model, [], client)
         answers.append({"Question": question, "Answer": response})
-
-    # Save responses to answers.txt
-    answers_file = "answers.txt"
-    with open(answers_file, "w", encoding="utf-8") as a_file:
+    
+    with open("answers.txt", "w", encoding="utf-8") as f:
         for item in answers:
-            a_file.write(f"Question: {item['Question']}\n")
-            a_file.write(f"Answer: {item['Answer']}\n\n")
-    print(NEON_GREEN + f"All responses saved to {answers_file}" + RESET_COLOR)
+            f.write(f"Question: {item['Question']}\nAnswer: {item['Answer']}\n\n")
 else:
-    print(YELLOW + "No questions found in question.text. Exiting..." + RESET_COLOR)
+    print(YELLOW + "No questions found in question.txt. Exiting..." + RESET_COLOR)
