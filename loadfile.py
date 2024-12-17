@@ -1,13 +1,21 @@
 import os
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 import PyPDF2
 import re
+from tkinterdnd2 import TkinterDnD, DND_FILES
 
-# Function to convert PDF to text and append to Knowledge Base.txt
-def convert_pdf_to_text():
-    file_path = filedialog.askopenfilename(filetypes=[("PDF Files", "*.pdf")])
-    if file_path:
+# Function to handle dropped files (PDFs)
+def drop_handler(event):
+    file_path = event.data.strip().strip('{}')
+    if file_path.lower().endswith('.pdf'):
+        process_pdf(file_path)
+    else:
+        messagebox.showerror("Error", "Only PDF files are supported for drag and drop!")
+
+# Function to process PDF files
+def process_pdf(file_path):
+    try:
         with open(file_path, 'rb') as pdf_file:
             pdf_reader = PyPDF2.PdfReader(pdf_file)
             num_pages = len(pdf_reader.pages)
@@ -21,60 +29,58 @@ def convert_pdf_to_text():
             text = re.sub(r'\s+', ' ', text).strip()
             
             # Split text into chunks by sentences, respecting a maximum chunk size
-            sentences = re.split(r'(?<=[.!?]) +', text)  # split on spaces following sentence-ending punctuation
-            chunks = []
-            current_chunk = ""
-            for sentence in sentences:
-                if len(current_chunk) + len(sentence) + 1 < 1000:  # +1 for the space
-                    current_chunk += (sentence + " ").strip()
-                else:
-                    chunks.append(current_chunk)
-                    current_chunk = sentence + " "
-            if current_chunk:
-                chunks.append(current_chunk)
-            with open("Knowledge Base.txt", "a", encoding="utf-8") as kb_file:
-                for chunk in chunks:
-                    kb_file.write(chunk.strip() + "\n")
-            print(f"PDF content appended to Knowledge Base.txt with each chunk on a separate line.")
-
-# Function to upload a text file and append to Knowledge Base.txt
-def upload_txtfile():
-    file_path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt")])
-    if file_path:
-        with open(file_path, 'r', encoding="utf-8") as txt_file:
-            text = txt_file.read()
-            
-            # Normalize whitespace and clean up text
-            text = re.sub(r'\s+', ' ', text).strip()
-            
-            # Split text into chunks by sentences, respecting a maximum chunk size
             sentences = re.split(r'(?<=[.!?]) +', text)
             chunks = []
             current_chunk = ""
             for sentence in sentences:
-                if len(current_chunk) + len(sentence) + 1 < 500:  # +1 for the space
+                if len(current_chunk) + len(sentence) + 1 < 1000:
                     current_chunk += (sentence + " ").strip()
                 else:
                     chunks.append(current_chunk)
                     current_chunk = sentence + " "
             if current_chunk:
                 chunks.append(current_chunk)
+            
             with open("Knowledge Base.txt", "a", encoding="utf-8") as kb_file:
                 for chunk in chunks:
                     kb_file.write(chunk.strip() + "\n")
-            print(f"Text file content appended to Knowledge Base.txt with each chunk on a separate line.")
+            messagebox.showinfo("Success", "PDF content appended to Knowledge Base.txt")
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to process PDF: {str(e)}")
 
-# Create the main window
-root = tk.Tk()
-root.title("Upload .pdf or .txt")
+# Function to save input text directly
+def save_text():
+    input_text = text_input.get("1.0", "end").strip()
+    if input_text:
+        try:
+            with open("Knowledge Base.txt", "a", encoding="utf-8") as kb_file:
+                kb_file.write(input_text + "\n")
+            messagebox.showinfo("Success", "Text saved to Knowledge Base.txt")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save text: {str(e)}")
+    else:
+        messagebox.showwarning("Warning", "Input box is empty!")
 
-# Create a button to open the file dialog for PDF
-pdf_button = tk.Button(root, text="Upload PDF", command=convert_pdf_to_text)
-pdf_button.pack(pady=10)
+# Main window setup
+root = TkinterDnD.Tk()
+root.title("Drag-and-Drop PDF & Text Input")
+root.geometry("400x300")
 
-# Create a button to open the file dialog for text file
-txt_button = tk.Button(root, text="Upload Text File", command=upload_txtfile)
-txt_button.pack(pady=10)
+# PDF Drag-and-Drop Area
+pdf_label = tk.Label(root, text="Drag and Drop PDF Here", relief="groove", height=5)
+pdf_label.pack(pady=10, fill=tk.BOTH, expand=True)
+pdf_label.drop_target_register(DND_FILES)
+pdf_label.dnd_bind('<<Drop>>', drop_handler)
 
-# Run the main event loop
+# Text Input Box
+text_input_label = tk.Label(root, text="Enter Text Below:")
+text_input_label.pack(pady=5)
+text_input = tk.Text(root, height=5, wrap=tk.WORD)
+text_input.pack(pady=5, fill=tk.BOTH, expand=True)
+
+# Save Text Button
+save_button = tk.Button(root, text="Save Text", command=save_text)
+save_button.pack(pady=10)
+
+# Run the main loop
 root.mainloop()
