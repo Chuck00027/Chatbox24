@@ -1,59 +1,26 @@
 # Chatbox24
-Load the conversation history of the email. Generate automatic answers based on RAG. Can be tested and trained locally. In the future, it can be run on the server and automatically reply to email inquiries.
-
-The basic RAG answer generation function is implemented, but the function of processing loaded emails still needs to be optimized. loadfile.py reads the relevant regulations and stores the content in Knowlege Base.txt. gmailload.py can read the selected email. raganswer-static.py can read the questions in questions.txt and generate answers. raganswer-dynamic.py is used for continuous questioning, and the actual work on the server when used simulates real continuous communication and answering
+Load the conversation history of the email. Generate automatic answers based on RAG. Can be tested and trained locally. In the future, it can be run on the server and automatically reply to email inquiries.Now we can operate through GUI, simply drag and drop files to achieve file processing
 
 Preliminary preparation：
 
 1.Please download Ollama: 
 
 https://ollama.com/download
-Then  run the command to install the models:
+
+Then  run the commands to install the models:
 
 ollama pull llama3
 
 ollama pull mxbai-embed-large
 
-2.Set up a Gmail password：
-Turn on 2-Step Verification in Google Security
-Enable IMAP of Gmial
-Then full your Email and password in env file
+2.install requirements.txt
+
+cd dir
+
+pip install -r requirements.txt
 
 Then Setup：
 
-1.cd dir
+1.click Chatbot24.exe to start(or run python Chatbot24.py)
 
-2.pip install -r requirements.txt
-
-3.python loadfile.py
-
-You could select the requirement documents to load into the Knowledge Base
-
-4.1load_eml.py
-Currently we cannot process emails in batches.I have to wait for the reply from TUM IT support.So use this for alternative.Please skip 4.2
-
-4.2run gmailload.py
-
-You could load emails with specified labels, specified keywords, and specified time ranges.
-
-e.g.    python gmailload.py --keyword "your_search_keyword" --startdate "01.01.2024" --enddate "31.01.2024" --label "your_label"
-
-python gmailload.py --label "your_label"
-
-In that way the Email conversation is loaded. The normalized text in stored in Knowledge Base.txt(Enhanced knowledge base,improve abaility) and Standard Q&A.txt(generalize the email conversation into Q&A form,use it as sample solution,could be used to test the accuracy of the RAG answer).BUT this function needs to be improved，to avoid noise information.
-
-5.Q_A_Processing.py
-
-Aim to Enhancing information filtering capabilities. Avoid unnecessary information or personal information leak
-
-6.python raganswer-static.py
-
-We should first edit the questions in question.txt.In that way the answer is generated and stored in answers.txt with Q&A form
-
-7.To be implemented, use the newly obtained questions and old KB to test the accuracy of the answers
-
-8.python raganswer-dynamic.py
-
-In order to run on the server in the future. In multiple rounds of communication, combine the previous information to give further answers. Run this program, you can manually enter questions, and it will eliminate more accurate answers based on your multiple rounds of questions.We use SCS method,Efficiently extract relevant information to reduce noise and optimize the answer quality of the language model.
-
-The next step will be to improve the current deficiencies and further integrate the program into the GUI interface
+2.There are 4 buttons here.It can realize editing, generating automatic answers, training, and testing functions. For detailed functions, please refer to the explanation in the PDF file
