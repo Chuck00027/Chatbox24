@@ -19,7 +19,7 @@ cd dir
 
 pip install -r requirements.txt
 
-Then Setup：
+Then Start：
 
 1.click Chatbot24.exe to start(or run python Chatbot24.py)
 
