@@ -9,3 +9,4 @@ torch
 beautifulsoup4
 pyyaml
 lxml
+scikit-learn
