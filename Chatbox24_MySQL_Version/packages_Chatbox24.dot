@@ -1,0 +1,9 @@
+digraph "packages_Chatbox24" {
+rankdir=BT
+charset="utf-8"
+"Chatbox24 - test - New.Chatbot24" [color="black", label=<Chatbox24 - test - New.Chatbot24>, shape="box", style="solid"];
+"Chatbox24 - test - New.GUI_load" [color="black", label=<Chatbox24 - test - New.GUI_load>, shape="box", style="solid"];
+"Chatbox24 - test - New.GUI_testing" [color="black", label=<Chatbox24 - test - New.GUI_testing>, shape="box", style="solid"];
+"Chatbox24 - test - New.GUI_training" [color="black", label=<Chatbox24 - test - New.GUI_training>, shape="box", style="solid"];
+"Chatbox24 - test - New.GUI_work" [color="black", label=<Chatbox24 - test - New.GUI_work>, shape="box", style="solid"];
+}
